@@ -1,31 +1,45 @@
 import json
-from os import major
-from textwrap import dedent
-
 import requests
+import re
+import os
 from bs4 import BeautifulSoup
 
-# 패치 버전 읽기
-def read_patch_version(filename="current_patch.txt"):
-    with open(filename, "r", encoding="utf-8") as f:
-        return f.read().strip()
+PATCH_LIST_URL = 'https://www.leagueoflegends.com/ko-kr/news/tags/patch-notes/'
 
-# 패치 버전 자동 증가
-def increase_patch_version(patch_version):
-    parts = patch_version.split("-")
-    if len(parts) != 2:
-        raise ValueError("패치 버전 형식이 xx-yy이어야 합니다.")
-    major, minor = int(parts[0]), int(parts[1])
-    minor += 1
-    return f"{major}-{minor:02d}"
+# version pattern 추출 -> 25.12, 25-12, 2025.S1.1, 2025-s1-1, 14.17...
+def extract_patch_version(title):
+    match = re.search(r'(\d{2,4}(?:[.\-][Ss]?\d+)*|\d{2,4}(?:[.\-][Ss]?\d+)*)', title)
+    if match:
+        # - 로 통일, 소문자로 통일
+        return match.group(1).replace('.', '-').lower()
+    return None
 
-# 패치노트 url 템플릿
-def get_patch_url(version):
-    return f"https://www.leagueoflegends.com/ko-kr/news/game-updates/patch-{version}-notes/"
+
+def get_patch_list():
+    response = requests.get(PATCH_LIST_URL)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    patch_list = []
+
+    for patch_card in soup.find_all('a', attrs={'data-testid': 'articlefeaturedcard-component'}):
+        url = f"https://www.leagueoflegends.com{patch_card['href']}"
+        title_tag = patch_card.find('div', class_='sc-ce9b75fd-0 lmZfRs')
+        if not title_tag:
+            continue
+        title = title_tag.text
+        version = extract_patch_version(title)
+        if version:
+            patch_list.append({'url': url, 'version': version, 'title': title})
+
+    return patch_list
+
+
+def already_crawled(version):
+    return os.path.exists(f'patchnotes/champion_patch_{version}.json')
 
 # 크롤링
 def crawl_patch(url, patch_version):
-    # 요청 체크
     response = requests.get(url)
     response.raise_for_status()
 
@@ -100,25 +114,25 @@ def crawl_patch(url, patch_version):
             print(f"  • {c}")
         print()
 
-    with open(f'champion_patch_{patch_version}.json', 'w', encoding='utf-8') as f:
+    with open(f'patchnotes/champion_patch_{patch_version}.json', 'w', encoding='utf-8') as f:
         json.dump(champion_data, f, ensure_ascii=False, indent=2)
 
-    with open(f'item_patch_{patch_version}.json', 'w', encoding='utf-8') as f:
+    with open(f'patchnotes/item_patch_{patch_version}.json', 'w', encoding='utf-8') as f:
         json.dump(item_data, f, ensure_ascii=False, indent=2)
 
     return True
 
+
 if __name__ == "__main__":
-    patch_version = read_patch_version()
-    url = get_patch_url(patch_version)
-    print(f"Try Crawling: {patch_version} ({url}")
-    try:
-        crwal_success = crawl_patch(url, patch_version)
-        if crwal_success:
-            next_version = increase_patch_version(patch_version)
-            with open("current_patch.txt", "w", encoding="utf-8") as f:
-                f.write(next_version)
-            print(f"Crawling Success! Next Patch Version is {next_version}")
-    except Exception as e:
-        print(f"Crawling Fail: {e}")
+    os.makedirs('patchnotes', exist_ok=True)
+    patch_list = get_patch_list()
+
+    for patch in patch_list:
+        if not already_crawled(patch['version']):
+            print(f"Crawling {patch['version']} ({patch['url']}) ...")
+            try:
+                crawl_patch(patch['url'], patch['version'])
+                print(f"Crawled! {patch['version']}")
+            except Exception as e:
+                print(f"Failed {patch['version']}: {e}")
 
