@@ -15,6 +15,7 @@ def extract_patch_version(title):
     return None
 
 
+# patch list들에서 version 동적으로 추출
 def get_patch_list():
     response = requests.get(PATCH_LIST_URL)
     response.raise_for_status()
@@ -38,32 +39,51 @@ def get_patch_list():
 def already_crawled(version):
     return os.path.exists(f'patchnotes/champion_patch_{version}.json')
 
-# 크롤링
+
+# Patch 구조에 따라 분기 처리 후 크롤링
 def crawl_patch(url, patch_version):
     response = requests.get(url)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    # patch-change-block로 변경 사항 구분
-    patch_blocks = soup.find_all("div", class_="patch-change-block")
-    champion_data, item_data = [], []
+    if soup.find("div", class_="patch-change-block"):
+        return parse_patchnote_v1(soup, patch_version)
+    elif soup.find("section", {"data-testid": "RichTextPatchNotesBlade"}):
+        return parse_patchnote_v2(soup, patch_version)
+    else:
+        print("지원하지 않는 구조입니다.")
+        return False
 
-    def extract_changes(ul):
-        changes = []
-        if not ul:
-            return changes
-        for li in ul.find_all("li"):
-            strong = li.find("strong")
-            key = strong.get_text(strip=True) if strong else ""
-            if strong:
-                strong.extract()
-            value = li.get_text(strip=True)
-            if key:
-                changes.append({key: value})
-            else:
-                changes.append(value)
+# ul 태그 파헤치기
+def extract_changes(ul):
+    changes = []
+    if not ul:
         return changes
+    for li in ul.find_all("li"):
+        strong = li.find("strong")
+        key = strong.get_text(strip=True) if strong else ""
+        if strong:
+            strong.extract()
+
+        # li 내부 모든 텍스트(직접 텍스트 + p, span, br 등 하위 텍스트 전부) 추출
+        # li 전체에서 공백 없이 텍스트를 순서대로 다 뽑아버리기
+        value = " ".join(t.strip() for t in li.stripped_strings)
+
+        # key 값은 value에 또 들어있을 수 있으니 빼주기
+        if key and value.startswith(key):
+            value = value[len(key):].lstrip(":").strip()
+
+        if key:
+            changes.append({key: value})
+        else:
+            changes.append(value)
+    return changes
+
+# v1 : patch-change-block
+def parse_patchnote_v1(soup, patch_version):
+    champion_data, item_data = [], []
+    patch_blocks = soup.find_all("div", class_="patch-change-block")
 
     for block in patch_blocks:
         # 챔피언/아이템 블록 구분
@@ -100,19 +120,95 @@ def crawl_patch(url, patch_version):
             })
             continue
 
-    for champ in champion_data:
-        print(f"챔피언: {champ['name']}")
-        for skill in champ['skills']:
-            print(f"  - {skill['skill_name']}:")
-            for c in skill['changes']:
-                print(f"    • {c}")
-        print()
+    # for champ in champion_data:
+    #     print(f"챔피언: {champ['name']}")
+    #     for skill in champ['skills']:
+    #         print(f"  - {skill['skill_name']}:")
+    #         for c in skill['changes']:
+    #             print(f"    • {c}")
+    #     print()
+    #
+    # for item in item_data:
+    #     print(f"아이템: {item['name']}")
+    #     for c in item['changes']:
+    #         print(f"  • {c}")
+    #     print()
 
-    for item in item_data:
-        print(f"아이템: {item['name']}")
-        for c in item['changes']:
-            print(f"  • {c}")
-        print()
+    with open(f'patchnotes/champion_patch_{patch_version}.json', 'w', encoding='utf-8') as f:
+        json.dump(champion_data, f, ensure_ascii=False, indent=2)
+
+    with open(f'patchnotes/item_patch_{patch_version}.json', 'w', encoding='utf-8') as f:
+        json.dump(item_data, f, ensure_ascii=False, indent=2)
+
+    return True
+
+# v2 : RichTextPatchNotesBlade
+def parse_patchnote_v2(soup, patch_version):
+    champion_data, item_data = [], []
+    body = soup.find('section', {'data-testid': 'RichTextPatchNotesBlade'})
+
+    current_section = None
+    champ_name = None
+    skills = []
+    skill_name = None
+    item_name = None
+
+    # champion_data 리스트에 현재 champ_name과 skills를 추가하고, 초기화값 반환.
+    def flush_champion(champion_data, champ_name, skills):
+        if champ_name:
+            champion_data.append({
+                "name": champ_name,
+                "skills": skills
+            })
+        # 항상 None, [] 반환해서 변수 초기화
+        return None, []
+
+    # 각 h2/h3/h4 태그를 순회하며 챔피언과 아이템 파싱
+    for tag in body.find_all(['h2', 'h3', 'h4', 'ul']):
+        # 챔피언/아이템 블록 구분
+        if tag.name == 'h2':
+            txt = tag.get_text(strip=True)
+            if '챔피언' in txt:
+                current_section = 'champion'
+                champ_name, skills = flush_champion(champion_data, champ_name, skills)
+                skill_name = None
+            elif '아이템' in txt:
+                current_section = 'item'
+                champ_name, skills = flush_champion(champion_data, champ_name, skills)
+                skill_name = None
+            else:
+                current_section = None
+
+        elif current_section == 'champion':
+            if tag.name == 'h3':
+                champ_name, skills = flush_champion(champion_data, champ_name, skills)
+                champ_name = tag.get_text(strip=True)
+                skills = []
+                skill_name = None
+
+            elif tag.name == 'h4':
+                skill_name = tag.get_text(strip=True)
+
+            elif tag.name == 'ul' and champ_name and skill_name:
+                changes = extract_changes(tag)
+                skills.append({
+                    "skill_name": skill_name,
+                    "changes": changes
+                })
+                skill_name = None
+
+        elif current_section == 'item':
+            if tag.name == 'h4':
+                item_name = tag.get_text(strip=True)
+            elif tag.name == 'ul' and item_name:
+                changes = extract_changes(tag)
+                item_data.append({
+                    "name": item_name,
+                    "changes": changes
+                })
+                item_name = None
+
+    champ_name, skills = flush_champion(champion_data, champ_name, skills)
 
     with open(f'patchnotes/champion_patch_{patch_version}.json', 'w', encoding='utf-8') as f:
         json.dump(champion_data, f, ensure_ascii=False, indent=2)
