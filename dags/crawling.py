@@ -215,8 +215,8 @@ def save_patch_data(patch_version, champion_data, item_data):
         json.dump(item_data, f, ensure_ascii=False, indent=2)
 
 
-if __name__ == "__main__":
-    os.makedirs('patchnotes', exist_ok=True)
+def crawl_all():
+    os.makedirs('../patchnotes', exist_ok=True)
     patch_list = get_patch_list()
 
     for patch in patch_list:
@@ -228,3 +228,6 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Failed {patch['version']}: {e}")
 
+
+if __name__ == "__main__":
+    crawl_all()
