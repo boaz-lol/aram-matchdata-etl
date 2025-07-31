@@ -1,0 +1,29 @@
+name: Airflow Deploy to HS
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOME_SERVER_HOST }}
+          username: ${{ secrets.HOME_SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: AIRFLOW_UID,AIRFLOW__CORE__FERNET_KEY
+          script: |
+            export AIRFLOW_UID=${AIRFLOW_UID}
+            export AIRFLOW__CORE__FERNET_KEY=${AIRFLOW__CORE__FERNET_KEY}
+            cd ~/services/airflow-crawler
+            git pull origin main
+            docker compose pull
+            docker compose up -d --build
+
