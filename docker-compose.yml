@@ -1,31 +1,29 @@
 version: '3.8'
-
-x-airflow-common: &airflow-common
-  image: apache/airflow:3.0.2-python3.11
-  environment:
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
-    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-  volumes:
-    - ./dags:/opt/airflow/dags
-    - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
-  user: "${AIRFLOW_UID}:0"
-  restart: always
-
 services:
   airflow-webserver:
-    <<: *airflow-common
-    command:
-      - webserver
+    image: ${DOCKER_HUB_USERNAME}/lp-airflow-crawler:latest
+    container_name: airflow-webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     ports:
       - "8080:8080"
+    user: "${AIRFLOW_UID}:0"
+    restart: always
     depends_on:
       - airflow-scheduler
 
   airflow-scheduler:
-    <<: *airflow-common
-    command:
-      - scheduler
+    image: ${DOCKER_HUB_USERNAME}/lp-airflow-crawler:latest
+    container_name: airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    user: "${AIRFLOW_UID}:0"
+    restart: always
