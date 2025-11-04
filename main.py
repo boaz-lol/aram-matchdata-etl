@@ -1,5 +1,7 @@
 import os
+import redis
 from dotenv import load_dotenv
+from user.job import get_match_ids
 
 
 def main():
@@ -8,11 +10,10 @@ def main():
     
     # RIOT_API_KEY 가져오기
     riot_api_key = os.getenv("RIOT_API_KEY")
+    user_id = ""
     
-    if riot_api_key:
-        print(f"RIOT_API_KEY loaded successfully: {riot_api_key[:10]}...")
-    else:
-        print("RIOT_API_KEY not found in .env file")
+    result = get_match_ids(user_id, riot_api_key)
+    print(result)
 
 
 if __name__ == "__main__":
