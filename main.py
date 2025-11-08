@@ -1,20 +1,22 @@
 import os
-import redis
 from dotenv import load_dotenv
-from user.job import get_match_ids
+from user.queue import UserIdQueue
 
 
 def main():
+    """큐에서 user_id를 가져오는 테스트용 스크립트"""
     # .env 파일에서 환경 변수 로드
     load_dotenv()
     
-    # RIOT_API_KEY 가져오기
-    riot_api_key = os.getenv("RIOT_API_KEY")
-    user_id = ""
+    queue = UserIdQueue()
     
-    result = get_match_ids(user_id, riot_api_key)
-    print(result)
-
+    # 큐가 비어있는지 확인
+    if queue.queue_size() == 0:
+        print("UserIdQueue가 비어있습니다. 데이터 수집을 종료합니다.")
+        return
+    
+    # 큐에서 user_id 가져오기
+    user_id = queue.get_user_id()
 
 if __name__ == "__main__":
     main()
