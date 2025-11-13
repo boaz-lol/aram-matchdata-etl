@@ -7,10 +7,18 @@ def initialize_user_queue():
     """Redis 큐가 비어있을 때 초기 user_id를 추가하는 함수"""
     queue = UserIdQueue()
     
-    # 큐가 이미 데이터가 있으면 초기화하지 않음
-    if queue.queue_size() > 0:
-        print(f"UserIdQueue에 이미 {queue.queue_size()}개의 user_id가 있습니다. 초기화를 건너뜁니다.")
+    # 큐와 SET 모두 확인 (데이터 불일치 체크)
+    queue_size = queue.queue_size()
+    set_size = queue.set_size()
+    
+    if queue_size > 0:
+        print(f"UserIdQueue에 이미 {queue_size}개의 user_id가 있습니다. (SET: {set_size}개) 초기화를 건너뜁니다.")
         return
+    
+    # 큐는 비어있지만 SET에 데이터가 있으면 불일치 상태 (정리 필요)
+    if set_size > 0:
+        print(f"경고: 큐는 비어있지만 SET에 {set_size}개의 user_id가 있습니다. SET을 정리합니다.")
+        queue.clear()
     
     # 환경 변수에서 초기 user_id 목록 가져오기
     initial_user_ids = os.getenv("INITIAL_USER_IDS", "")
