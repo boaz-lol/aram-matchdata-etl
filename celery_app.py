@@ -22,6 +22,7 @@ celery_app = Celery(
     "lp-patchnote",
     broker=redis_url,
     backend=redis_url,
+    include=["tasks"],
 )
 
 # Celery 설정
@@ -40,7 +41,4 @@ celery_app.conf.beat_schedule = {
         "schedule": 120.0,
     },
 }
-
-# 작업 자동 등록
-celery_app.autodiscover_tasks(["tasks"])
 
