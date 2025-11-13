@@ -1,11 +1,110 @@
 import os
+import asyncio
+import time
+from typing import Tuple
+import httpx
 from celery_app import celery_app
 from user.queue import UserIdQueue
-from match.api import get_match_ids, get_match_detail
+from match.api import get_match_ids, get_match_detail_async
 from db.mongodb import get_mongodb_client
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Riot API Rate Limit
+MAX_REQUESTS_PER_2MIN = 100
+BATCH_SIZE = 20  # 1초당 최대 20개 동시 처리
+
+
+async def process_match_ids_async(
+    match_ids: list,
+    riot_api_key: str,
+    mongodb,
+    queue: UserIdQueue,
+    initial_request_count: int = 0
+) -> Tuple[int, int, int]:
+    """
+    match_ids를 20개씩 배치로 나눠서 비동기로 처리
+    
+    Args:
+        match_ids: 처리할 match_id 리스트
+        riot_api_key: Riot API 키
+        mongodb: MongoDB 클라이언트
+        queue: UserIdQueue 인스턴스
+        initial_request_count: 이미 사용한 요청 수 (예: get_match_ids로 1개 사용)
+    
+    Returns:
+        tuple: (saved_count, participants_added_count, total_request_count)
+    """
+    saved_count = 0
+    participants_added_count = 0
+    request_count = initial_request_count
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # match_ids를 20개씩 배치로 나누기
+        for i in range(0, len(match_ids), BATCH_SIZE):
+            # 2분당 100개 제한 체크
+            if request_count >= MAX_REQUESTS_PER_2MIN:
+                print(f"Rate limit reached: {request_count} requests. Stopping processing.")
+                break
+            
+            batch = match_ids[i:i + BATCH_SIZE]
+            batch_size = len(batch)
+            
+            # 남은 요청 수 확인 (100개 제한 고려)
+            remaining_requests = MAX_REQUESTS_PER_2MIN - request_count
+            if remaining_requests < batch_size:
+                # 남은 요청 수만큼만 처리
+                batch = batch[:remaining_requests]
+                batch_size = len(batch)
+            
+            print(f"Processing batch {i // BATCH_SIZE + 1}: {batch_size} match_ids (Total requests: {request_count})")
+            
+            # 배치 내 모든 요청을 동시에 실행
+            tasks = [
+                get_match_detail_async(match_id, riot_api_key, client)
+                for match_id in batch
+            ]
+            
+            match_details = await asyncio.gather(*tasks, return_exceptions=True)
+            request_count += batch_size
+            
+            # 각 match_detail 처리
+            for match_id, match_detail in zip(batch, match_details):
+                if isinstance(match_detail, Exception):
+                    print(f"Error processing match_id {match_id}: {str(match_detail)}")
+                    continue
+                
+                if not match_detail:
+                    print(f"Failed to get match detail for match_id: {match_id}")
+                    continue
+                
+                try:
+                    # MongoDB에 저장
+                    if mongodb.save_match(match_detail):
+                        saved_count += 1
+                    
+                    # metadata.participants에서 user_id 추출하여 큐에 추가
+                    metadata = match_detail.get("metadata", {})
+                    participants = metadata.get("participants", [])
+                    
+                    for participant_id in participants:
+                        if participant_id:  # 빈 문자열 체크
+                            if queue.add_user_id(participant_id):
+                                participants_added_count += 1
+                                print(f"새로운 user_id를 큐에 추가: {participant_id}")
+                    
+                    print(f"Successfully processed match_id: {match_id}")
+                except Exception as e:
+                    print(f"Error processing match_detail for {match_id}: {str(e)}")
+                    continue
+            
+            # 마지막 배치가 아니고, 아직 처리할 match_id가 남아있으면 1초 대기
+            if i + BATCH_SIZE < len(match_ids) and request_count < MAX_REQUESTS_PER_2MIN:
+                print(f"Waiting 1 second before next batch...")
+                await asyncio.sleep(1.0)
+    
+    return saved_count, participants_added_count, request_count
 
 
 @celery_app.task(name="tasks.process_user_queue")
@@ -33,6 +132,7 @@ def process_user_queue():
     try:
         # match_id 리스트 조회
         match_ids = get_match_ids(user_id, riot_api_key)
+        request_count = 1  # get_match_ids 호출로 1개 사용
         
         if not match_ids:
             print(f"No match IDs found for user_id: {user_id}")
@@ -43,42 +143,20 @@ def process_user_queue():
         # MongoDB 클라이언트 초기화
         mongodb = get_mongodb_client()
         
-        # 각 match_id로 전적 상세 정보 가져오기
-        saved_count = 0
-        participants_added_count = 0
+        # async 함수로 배치 처리 실행
+        saved_count, participants_added_count, final_request_count = asyncio.run(
+            process_match_ids_async(match_ids, riot_api_key, mongodb, queue, initial_request_count=request_count)
+        )
         
-        for match_id in match_ids:
-            try:
-                match_detail = get_match_detail(match_id, riot_api_key)
-                if match_detail:
-                    # MongoDB에 저장
-                    if mongodb.save_match(match_detail):
-                        saved_count += 1
-                    
-                    # metadata.participants에서 user_id 추출하여 큐에 추가
-                    metadata = match_detail.get("metadata", {})
-                    participants = metadata.get("participants", [])
-                    
-                    for participant_id in participants:
-                        if participant_id:  # 빈 문자열 체크
-                            if queue.add_user_id(participant_id):
-                                participants_added_count += 1
-                                print(f"새로운 user_id를 큐에 추가: {participant_id}")
-                    
-                    print(f"Successfully processed match_id: {match_id}")
-                else:
-                    print(f"Failed to get match detail for match_id: {match_id}")
-            except Exception as e:
-                print(f"Error processing match_id {match_id}: {str(e)}")
-                # 개별 match_id 에러는 계속 진행
-                continue
+        request_count = final_request_count
         
-        print(f"처리 완료: {saved_count}개 match 데이터 저장, {participants_added_count}개 user_id 큐에 추가")
+        print(f"처리 완료: {saved_count}개 match 데이터 저장, {participants_added_count}개 user_id 큐에 추가 (총 {request_count}개 API 요청)")
         return {
             "user_id": user_id,
             "match_ids_count": len(match_ids),
             "saved_count": saved_count,
-            "participants_added_count": participants_added_count
+            "participants_added_count": participants_added_count,
+            "request_count": request_count
         }
     except Exception as e:
         print(f"Error processing user_id {user_id}: {str(e)}")

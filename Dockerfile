@@ -12,7 +12,7 @@ COPY pyproject.toml ./
 
 # pip 업그레이드 및 의존성 설치
 RUN pip install --upgrade pip && \
-    pip install python-dotenv redis requests orjson celery pymongo
+    pip install python-dotenv redis requests httpx orjson celery pymongo
 
 # 애플리케이션 코드 복사
 COPY . .
