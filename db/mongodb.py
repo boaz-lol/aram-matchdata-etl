@@ -18,8 +18,8 @@ class MongoDBClient:
             raise ValueError("MONGO_DB_URL environment variable is not set")
         
         self.client = MongoClient(mongo_url)
-        self.db: Database = self.client.get_database()
-        self.collection_name = "matches"
+        self.db: Database = self.client.get_database("lp-db")
+        self.collection_name = "match"
         self.collection: Collection = self.db[self.collection_name]
         
         # match_id를 _id로 사용하기 위해 인덱스 생성 (이미 있으면 무시)
