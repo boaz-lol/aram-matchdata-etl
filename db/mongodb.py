@@ -21,9 +21,6 @@ class MongoDBClient:
         self.db: Database = self.client.get_database("lp-db")
         self.collection_name = "match"
         self.collection: Collection = self.db[self.collection_name]
-        
-        # match_id를 _id로 사용하기 위해 인덱스 생성 (이미 있으면 무시)
-        self.collection.create_index("_id", unique=True)
     
     def save_match(self, match_detail: Dict[str, Any]) -> bool:
         """
