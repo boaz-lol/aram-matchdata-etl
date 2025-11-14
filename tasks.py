@@ -81,8 +81,10 @@ async def process_match_ids_async(
                 
                 try:
                     # MongoDB에 저장
-                    if mongodb.save_match(match_detail):
-                        saved_count += 1
+                    infodata = match_detail.get("info", {})
+                    if infodata.get("gameMode") == "ARAM":
+                        if mongodb.save_match(match_detail):
+                            saved_count += 1
                     
                     # metadata.participants에서 user_id 추출하여 큐에 추가
                     metadata = match_detail.get("metadata", {})
