@@ -21,6 +21,8 @@ class MongoDBClient:
         self.db: Database = self.client.get_database("lp-db")
         self.collection_name = "match"
         self.collection: Collection = self.db[self.collection_name]
+        self.timeline_collection_name = "match_detail"
+        self.timeline_collection: Collection = self.db[self.timeline_collection_name]
     
     def save_match(self, match_detail: Dict[str, Any]) -> bool:
         """
@@ -62,6 +64,46 @@ class MongoDBClient:
                 
         except Exception as e:
             print(f"Error saving match to MongoDB: {str(e)}")
+            return False
+    
+    def save_match_timeline(self, match_id: str, timeline_data: Dict[str, Any]) -> bool:
+        """
+        match timeline 데이터를 MongoDB의 match_detail 컬렉션에 저장 (upsert)
+        
+        Args:
+            match_id: Riot API match_id
+            timeline_data: Riot API에서 가져온 timeline 데이터
+            
+        Returns:
+            bool: 저장 성공 여부
+        """
+        try:
+            if not match_id:
+                print("Warning: match_id가 없습니다.")
+                return False
+            
+            # _id 필드에 match_id 설정하고 나머지 데이터 저장
+            document = {
+                "_id": match_id,
+                **timeline_data
+            }
+            
+            # upsert 실행 (이미 있으면 업데이트, 없으면 삽입)
+            result = self.timeline_collection.replace_one(
+                {"_id": match_id},
+                document,
+                upsert=True
+            )
+            
+            if result.upserted_id or result.modified_count > 0:
+                print(f"Match timeline 데이터 저장 완료: {match_id}")
+                return True
+            else:
+                print(f"Match timeline 데이터 저장 실패 (변경 없음): {match_id}")
+                return False
+                
+        except Exception as e:
+            print(f"Error saving match timeline to MongoDB: {str(e)}")
             return False
     
     def close(self):

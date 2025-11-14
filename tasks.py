@@ -5,7 +5,7 @@ from typing import Tuple
 import httpx
 from celery_app import celery_app
 from user.queue import UserIdQueue
-from match.api import get_match_ids, get_match_detail_async
+from match.api import get_match_ids, get_match_detail_async, get_match_timeline_async
 from db.mongodb import get_mongodb_client
 from dotenv import load_dotenv
 
@@ -58,53 +58,88 @@ async def process_match_ids_async(
             batch_size = len(batch)
             
             # 남은 요청 수 확인 (100개 제한 고려)
+            # match_id 1개당 detail + timeline 2개 요청이므로, batch_size * 2를 고려
             remaining_requests = MAX_REQUESTS_PER_2MIN - request_count
-            if remaining_requests < batch_size:
+            max_match_ids_in_batch = remaining_requests // 2  # detail + timeline 각각 1개씩
+            
+            if max_match_ids_in_batch < batch_size:
                 # 남은 요청 수만큼만 처리
-                batch = batch[:remaining_requests]
+                batch = batch[:max_match_ids_in_batch]
                 batch_size = len(batch)
             
-            print(f"Processing batch {i // BATCH_SIZE + 1}: {batch_size} match_ids (Total requests: {request_count})")
+            if batch_size == 0:
+                print(f"Rate limit reached. Cannot process more match_ids.")
+                break
             
-            # 배치 내 모든 요청을 동시에 실행
-            tasks = [
+            print(f"Processing batch {i // BATCH_SIZE + 1}: {batch_size} match_ids (Total requests: {request_count}, will add {batch_size * 2} requests)")
+            
+            # 배치 내 모든 match_id에 대해 detail과 timeline을 동시에 요청
+            detail_tasks = [
                 get_match_detail_async(match_id, riot_api_key, client)
                 for match_id in batch
             ]
+            timeline_tasks = [
+                get_match_timeline_async(match_id, riot_api_key, client)
+                for match_id in batch
+            ]
             
-            match_details = await asyncio.gather(*tasks, return_exceptions=True)
-            request_count += batch_size
+            # detail과 timeline을 동시에 요청
+            results = await asyncio.gather(
+                *detail_tasks,
+                *timeline_tasks,
+                return_exceptions=True
+            )
             
-            # 각 match_detail 처리
-            for match_id, match_detail in zip(batch, match_details):
-                if isinstance(match_detail, Exception):
-                    print(f"Error processing match_id {match_id}: {str(match_detail)}")
-                    continue
+            # 결과 분리: 앞의 batch_size개는 detail, 뒤의 batch_size개는 timeline
+            match_details = results[:batch_size]
+            match_timelines = results[batch_size:]
+            
+            request_count += batch_size * 2  # detail + timeline 각각 1개씩
+            
+            # 각 match_detail과 timeline 처리
+            for idx, match_id in enumerate(batch):
+                match_detail = match_details[idx]
+                match_timeline = match_timelines[idx]
                 
-                if not match_detail:
+                # match_detail 처리
+                if isinstance(match_detail, Exception):
+                    print(f"Error processing match detail for {match_id}: {str(match_detail)}")
+                    match_detail = None
+                elif not match_detail:
                     print(f"Failed to get match detail for match_id: {match_id}")
-                    continue
+                
+                # match_timeline 처리
+                if isinstance(match_timeline, Exception):
+                    print(f"Error processing match timeline for {match_id}: {str(match_timeline)}")
+                    match_timeline = None
+                elif not match_timeline:
+                    print(f"Failed to get match timeline for match_id: {match_id}")
                 
                 try:
-                    # MongoDB에 저장
-                    infodata = match_detail.get("info", {})
-                    if infodata.get("gameMode") == "ARAM":
-                        if mongodb.save_match(match_detail):
-                            saved_count += 1
+                    # match_detail이 있으면 MongoDB에 저장
+                    if match_detail:
+                        infodata = match_detail.get("info", {})
+                        if infodata.get("gameMode") == "ARAM":
+                            #if mongodb.save_match(match_detail):
+                                saved_count += 1
+                        
+                        # metadata.participants에서 user_id 추출하여 큐에 추가
+                        metadata = match_detail.get("metadata", {})
+                        participants = metadata.get("participants", [])
+                        
+                        for participant_id in participants:
+                            if participant_id:  # 빈 문자열 체크
+                                if queue.add_user_id(participant_id):
+                                    participants_added_count += 1
+                                    print(f"새로운 user_id를 큐에 추가: {participant_id}")
                     
-                    # metadata.participants에서 user_id 추출하여 큐에 추가
-                    metadata = match_detail.get("metadata", {})
-                    participants = metadata.get("participants", [])
-                    
-                    for participant_id in participants:
-                        if participant_id:  # 빈 문자열 체크
-                            if queue.add_user_id(participant_id):
-                                participants_added_count += 1
-                                print(f"새로운 user_id를 큐에 추가: {participant_id}")
+                    # match_timeline이 있으면 match_detail 컬렉션에 저장
+                    #if match_timeline:
+                    #    mongodb.save_match_timeline(match_id, match_timeline)
                     
                     print(f"Successfully processed match_id: {match_id}")
                 except Exception as e:
-                    print(f"Error processing match_detail for {match_id}: {str(e)}")
+                    print(f"Error processing match data for {match_id}: {str(e)}")
                     continue
             
             # 마지막 배치가 아니고, 아직 처리할 match_id가 남아있으면 1초 대기
