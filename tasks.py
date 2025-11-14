@@ -199,9 +199,9 @@ def process_user_queue():
         # MongoDB 클라이언트 초기화
         mongodb = get_mongodb_client()
         
-        # async 함수로 배치 처리 실행
+        # async 함수로 배치 처리 실행 mongodb,
         saved_count, participants_added_count, final_request_count = asyncio.run(
-            process_match_ids_async(match_ids, riot_api_key, mongodb, queue, initial_request_count=request_count)
+            process_match_ids_async(match_ids, riot_api_key,  mongodb, queue, initial_request_count=request_count)
         )
         
         request_count = final_request_count
