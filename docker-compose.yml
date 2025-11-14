@@ -23,7 +23,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - INITIAL_USER_IDS=${INITIAL_USER_IDS:-rW89DDsxrVs4tl1yXztPhsL-r_bmTXKsjmnvgVYeCQd8spzzuwMlBnHbFJUNMrD6Wb2ReiOTCNmgkg, pWjqIfFpXyRUixJgiqFaagTC0kJEsuSSpBtGlVnlp5aNciPiRCYMNbasqZMxI5Fx1iEDSGLtD_ObTA}
+      - INITIAL_USER_IDS=${INITIAL_USER_IDS:-}
     volumes:
       - .:/app
     command: python main.py

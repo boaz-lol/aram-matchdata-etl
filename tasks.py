@@ -15,6 +15,12 @@ load_dotenv()
 MAX_REQUESTS_PER_2MIN = 100
 BATCH_SIZE = 20  # 1초당 최대 20개 동시 처리
 
+# 기본 초기 user_id 목록 (큐가 비어있을 때 사용)
+DEFAULT_INITIAL_USER_IDS = [
+    "lgSZZkKWsSd0q6-ZIIXaBrSjWzHs7KKtSkKjuD6mYkHAEbSE12GRxwWA_io27Ov0xRU218FqL1WSaA",
+    "nMwEA3weON9TMEKbjNlljKebJbQvDz-6RncjcNVufAaZ0O2qyWZTsoPTyPps2QwHRg9XANqnXenTpQ"
+]
+
 
 async def process_match_ids_async(
     match_ids: list,
@@ -126,8 +132,21 @@ def process_user_queue():
     user_id = queue.get_user_id()
     
     if not user_id:
-        print("Queue is empty, no user_id to process")
-        return
+        # 큐가 비어있으면 기본 user_id 추가
+        print("Queue is empty, adding default user_ids...")
+        added_count = 0
+        for default_user_id in DEFAULT_INITIAL_USER_IDS:
+            if queue.add_user_id(default_user_id):
+                added_count += 1
+                print(f"기본 user_id 추가됨: {default_user_id}")
+        
+        if added_count > 0:
+            print(f"총 {added_count}개의 기본 user_id가 큐에 추가되었습니다. 다시 시도합니다.")
+            # 추가한 user_id 중 하나를 가져오기
+            user_id = queue.get_user_id()
+        else:
+            print("기본 user_id 추가 실패 또는 이미 존재함. 큐가 비어있습니다.")
+            return
     
     print(f"Processing user_id: {user_id}")
     
