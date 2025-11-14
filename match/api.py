@@ -34,13 +34,40 @@ def get_match_ids(user_id: str, api_key: str, start: int = 0, count: int = 100) 
     print(f"Request URL: {url}")
     print(f"API Key: {api_key[:20]}...")
     print(f"User ID: {user_id}")
+    print(f"Headers X-Riot-Token: {headers.get('X-Riot-Token', 'NOT FOUND')[:20]}...")
     
     response = requests.get(url=url, headers=headers)
     
     # 에러 응답 확인
     if response.status_code != 200:
-        error_detail = response.json() if response.content else response.text
-        print(f"Error getting match IDs: {response.status_code} - {error_detail}")
+        print("=" * 80)
+        print("ERROR: get_match_ids failed")
+        print("=" * 80)
+        print(f"Request URL: {url}")
+        print(f"Request Method: GET")
+        print(f"Request Headers:")
+        for key, value in headers.items():
+            if key == "X-Riot-Token":
+                print(f"  {key}: {value[:20]}... (length: {len(value)})")
+            else:
+                print(f"  {key}: {value}")
+        print(f"Response Status Code: {response.status_code}")
+        print(f"Response Headers: {dict(response.headers)}")
+        try:
+            error_detail = response.json()
+            print(f"Response Body (JSON): {error_detail}")
+        except:
+            error_detail = response.text
+            print(f"Response Body (Text): {error_detail}")
+        print(f"API Key Info: length={len(api_key)}, prefix={api_key[:20] if len(api_key) > 20 else api_key}...")
+        print(f"User ID: {user_id}")
+        print(f"Region: asia (https://asia.api.riotgames.com)")
+        print(f"Possible Causes:")
+        print(f"  1. User ID (puuid) may be from a different region (KR, NA, EUW, etc.)")
+        print(f"  2. API key may not have permission for asia region")
+        print(f"  3. User ID format may be invalid or corrupted")
+        print(f"  4. API key may be expired or revoked")
+        print("=" * 80)
         return []
     
     return orjson.loads(response.content)
@@ -73,8 +100,28 @@ def get_match_detail(match_id: str, api_key: str) -> Optional[Dict[str, Any]]:
     
     # 에러 응답 확인
     if response.status_code != 200:
-        error_detail = response.json() if response.content else response.text
-        print(f"Error getting match detail: {response.status_code} - {error_detail}")
+        print("=" * 80)
+        print("ERROR: get_match_detail failed")
+        print("=" * 80)
+        print(f"Request URL: {url}")
+        print(f"Request Method: GET")
+        print(f"Request Headers:")
+        for key, value in headers.items():
+            if key == "X-Riot-Token":
+                print(f"  {key}: {value[:20]}... (length: {len(value)})")
+            else:
+                print(f"  {key}: {value}")
+        print(f"Response Status Code: {response.status_code}")
+        print(f"Response Headers: {dict(response.headers)}")
+        try:
+            error_detail = response.json()
+            print(f"Response Body (JSON): {error_detail}")
+        except:
+            error_detail = response.text
+            print(f"Response Body (Text): {error_detail}")
+        print(f"Match ID: {match_id}")
+        print(f"API Key Info: length={len(api_key)}, prefix={api_key[:20] if len(api_key) > 20 else api_key}...")
+        print("=" * 80)
         return None
     
     return orjson.loads(response.content)
