@@ -120,22 +120,22 @@ async def process_match_ids_async(
                     if match_detail:
                         infodata = match_detail.get("info", {})
                         if infodata.get("gameMode") == "ARAM":
-                            #if mongodb.save_match(match_detail):
+                            if mongodb.save_match(match_detail):
                                 saved_count += 1
-                        
+
                         # metadata.participants에서 user_id 추출하여 큐에 추가
                         metadata = match_detail.get("metadata", {})
                         participants = metadata.get("participants", [])
-                        
+
                         for participant_id in participants:
                             if participant_id:  # 빈 문자열 체크
                                 if queue.add_user_id(participant_id):
                                     participants_added_count += 1
                                     print(f"새로운 user_id를 큐에 추가: {participant_id}")
-                    
+
                     # match_timeline이 있으면 match_detail 컬렉션에 저장
-                    #if match_timeline:
-                    #    mongodb.save_match_timeline(match_id, match_timeline)
+                    if match_timeline:
+                        mongodb.save_match_timeline(match_id, match_timeline)
                     
                     print(f"Successfully processed match_id: {match_id}")
                 except Exception as e:
