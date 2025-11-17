@@ -120,22 +120,22 @@ async def process_match_ids_async(
                     if match_detail:
                         infodata = match_detail.get("info", {})
                         if infodata.get("gameMode") == "ARAM":
-                            if mongodb.save_match(match_detail):
+                            #if mongodb.save_match(match_detail):
                                 saved_count += 1
-
+                        
                         # metadata.participants에서 user_id 추출하여 큐에 추가
                         metadata = match_detail.get("metadata", {})
                         participants = metadata.get("participants", [])
-
+                        
                         for participant_id in participants:
                             if participant_id:  # 빈 문자열 체크
                                 if queue.add_user_id(participant_id):
                                     participants_added_count += 1
                                     print(f"새로운 user_id를 큐에 추가: {participant_id}")
-
+                    
                     # match_timeline이 있으면 match_detail 컬렉션에 저장
-                    if match_timeline:
-                        mongodb.save_match_timeline(match_id, match_timeline)
+                    #if match_timeline:
+                    #    mongodb.save_match_timeline(match_id, match_timeline)
                     
                     print(f"Successfully processed match_id: {match_id}")
                 except Exception as e:
@@ -149,6 +149,22 @@ async def process_match_ids_async(
     
     return saved_count, participants_added_count, request_count
 
+@celery_app.task(name="tasks.collect_match_data")
+def collect_match_data():
+    """
+    Redis 큐에서 match_id를 조회하고,
+    각 match_id로 전적 메타데이터와 전적 타임라인 데이터를 가져와 MongoDB에 저장하는 Celery 작업
+
+    전적 메타데이터에서 가져온 user_id(list)를 큐에 추가
+
+    10초마다 Celery Beat에 의해 실행됨
+    """
+    queue = UserIdQueue()
+    riot_api_key = os.getenv("RIOT_API_KEY")
+
+    user_id = queue.get_user_id()
+
+    return
 
 @celery_app.task(name="tasks.process_user_queue")
 def process_user_queue():
