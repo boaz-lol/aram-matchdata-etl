@@ -5,6 +5,10 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - TZ=Asia/Seoul
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -24,8 +28,11 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0
       - PYTHONPATH=/app
+      - TZ=Asia/Seoul
     volumes:
       - .:/app
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     command: celery -A celery_app worker --beat --loglevel=info
 
 volumes:
