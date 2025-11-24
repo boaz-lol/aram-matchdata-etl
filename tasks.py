@@ -116,9 +116,20 @@ def get_match_info():
 
                     try:
                         # 병합 document 생성
-                        merged_doc = {}
+                        merged_doc = {}                        
 
                         if detail:
+                            # 매치 참가자 user_id 추출
+                            participants = detail.get("metadata", {}).get("participants", [])
+
+                            TTL_6_HOURS = 6 * 60 * 60  # 21600 seconds
+
+                            for participant_id in participants:
+                                if participant_id:
+                                    if user_queue.add_user_id(participant_id, ttl=TTL_6_HOURS):
+                                        participants_added += 1
+
+                            # 기본 detail 설정
                             merged_doc = {**detail}  # detail을 기본으로
 
                             # ARAM 필터링
@@ -132,20 +143,15 @@ def get_match_info():
                             merged_doc["timeline"] = timeline
 
                         # MongoDB에 병합 document 저장
+                        """
                         if mongodb.save_match(merged_doc):
                             saved_count += 1
                             logger.info(f"Saved merged document for {match_id}")
+                        """
 
-                        # 참가자 user_id 추출 및 큐에 추가 (6시간 TTL)
-                        if detail:
-                            participants = detail.get("metadata", {}).get("participants", [])
+                        logger.info(f"Merged document: {merged_doc}")
 
-                            TTL_6_HOURS = 6 * 60 * 60  # 21600 seconds
-
-                            for participant_id in participants:
-                                if participant_id:
-                                    if user_queue.add_user_id(participant_id, ttl=TTL_6_HOURS):
-                                        participants_added += 1
+                        
 
                     except Exception as e:
                         logger.error(f"Error processing {match_id}: {str(e)}", exc_info=True)
