@@ -8,12 +8,15 @@ from user.queue import UserIdQueue
 from match.api import get_match_ids, get_match_detail_async, get_match_timeline_async
 from db.mongodb import get_mongodb_client
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 # Riot API Rate Limit
-MAX_REQUESTS_PER_2MIN = 100
-BATCH_SIZE = 20  # 1초당 최대 20개 동시 처리
+MAX_REQUESTS_PER_2MIN = 2000
+BATCH_SIZE = 100  # 1초당 최대 100개 동시 처리
 
 # 기본 초기 user_id 목록 (큐가 비어있을 때 사용)
 DEFAULT_INITIAL_USER_IDS = [
