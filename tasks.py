@@ -143,6 +143,7 @@ def get_match_info():
                             merged_doc["timeline"] = timeline
 
                         # MongoDB에 병합 document 저장
+                        # 실제 몽고디비 사용시 아래 주석 제거 후 logger.info 주석 처리
                         """
                         if mongodb.save_match(merged_doc):
                             saved_count += 1
