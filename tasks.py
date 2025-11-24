@@ -16,7 +16,7 @@ load_dotenv()
 
 # Riot API Rate Limit
 MAX_REQUESTS_PER_2MIN = 2000
-BATCH_SIZE = 100  # 1초당 최대 100개 동시 처리
+BATCH_SIZE = 200  # 1초당 최대 200개 동시 처리
 
 # 기본 초기 user_id 목록 (큐가 비어있을 때 사용)
 DEFAULT_INITIAL_USER_IDS = [
@@ -42,8 +42,7 @@ def get_match_info():
         logger.error("RIOT_API_KEY not found in environment variables")
         return {"status": "error", "message": "No API key"}
 
-    # MatchIdQueue에서 match_id 수집 (최대 50개 = 100 API 요청)
-    max_matches = MAX_REQUESTS_PER_2MIN // 2  # 50 matches
+    max_matches = MAX_REQUESTS_PER_2MIN
     match_ids = []
 
     for _ in range(max_matches):

@@ -1,7 +1,10 @@
 import os
 from celery import Celery
-from celery.schedules import crontab
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -34,11 +37,15 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# 작업 스케줄 설정 (2분마다 실행)
+# 작업 스케줄 설정
 celery_app.conf.beat_schedule = {
-    "process-user-queue": {
-        "task": "tasks.process_user_queue",
-        "schedule": 120.0,
+    "get-match-id-list": {
+        "task": "tasks.get_match_id_list",
+        "schedule": 120.0,  # 2분마다 실행
+    },
+    "get-match-info": {
+        "task": "tasks.get_match_detail",
+        "schedule": 120.0,  # 2분마다 실행
     },
 }
 
