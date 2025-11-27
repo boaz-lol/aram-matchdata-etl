@@ -1,6 +1,8 @@
 services:
   redis:
     image: redis:7-alpine
+    networks:
+      - match-etl-network
     ports:
       - "6379:6379"
     volumes:
@@ -18,6 +20,8 @@ services:
 
   celery:
     build: .
+    networks:
+      - match-etl-network
     depends_on:
       redis:
         condition: service_healthy
