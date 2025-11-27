@@ -34,6 +34,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     command: celery -A celery_app worker --beat --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "mongodb:host-gateway"
 
 volumes:
   redis_data:
