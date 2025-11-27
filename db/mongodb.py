@@ -18,7 +18,7 @@ class MongoDBClient:
             raise ValueError("MONGO_DB_URL environment variable is not set")
         
         self.client = MongoClient(mongo_url)
-        self.db: Database = self.client.get_database("lp-db")
+        self.db: Database = self.client.get_database("aram-db")
         self.collection_name = "match"
         self.collection: Collection = self.db[self.collection_name]
         self.timeline_collection_name = "match_detail"

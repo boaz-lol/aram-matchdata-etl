@@ -22,7 +22,7 @@ else:
 
 # Celery 앱 초기화
 celery_app = Celery(
-    "lp-patchnote",
+    "aram-matchdata-etl",
     broker=redis_url,
     backend=redis_url,
     include=["tasks"],
