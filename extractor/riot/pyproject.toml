@@ -1,0 +1,14 @@
+[project]
+name = "lp-patchnote-v2"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.2.1",
+    "redis>=6.0.0",
+    "requests",
+    "httpx",
+    "orjson",
+    "celery>=5.3.0",
+    "pymongo>4.12.0"
+]

@@ -1,1 +1,0 @@
-# lp-patchnote-v2

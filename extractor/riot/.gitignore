@@ -1,0 +1,11 @@
+*.json
+venv/
+.venv/
+__pycache__/
+.idea/
+.env
+
+.idea/*
+celerybeat-schedule
+
+CLAUDE.md
