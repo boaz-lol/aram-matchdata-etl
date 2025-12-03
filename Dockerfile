@@ -15,7 +15,7 @@ RUN pip install --upgrade pip && \
     pip install python-dotenv redis requests httpx orjson celery pymongo
 
 # 애플리케이션 코드 복사
-COPY . .
+COPY extractor/riot .
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1

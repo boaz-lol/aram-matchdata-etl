@@ -19,7 +19,7 @@ services:
       retries: 5
 
   celery:
-    build: .
+    build: extractor/riot
     networks:
       - match-etl-network
     depends_on:
