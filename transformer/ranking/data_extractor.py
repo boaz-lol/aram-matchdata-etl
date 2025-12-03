@@ -1,12 +1,21 @@
+import os
 import pymongo
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Tuple
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class MatchDataExtractor:
-    def __init__(self, mongo_uri: str = "mongodb://riot_admin:qwer1234@ooni.site:27017/aram-db?authSource=aram-db", db_name: str = "aram-db"):
-        self.client = pymongo.MongoClient(mongo_uri)
+    def __init__(self, mongo_uri: str = None, db_name: str = 'aram-db'):
+        self.mongo_uri = mongo_uri or os.getenv('MONGO_URI')
+
+        if not self.mongo_uri:
+            raise ValueError("MONGO_URI must be provided either as parameter or in .env file")
+
+        self.client = pymongo.MongoClient(self.mongo_uri)
         self.db = self.client[db_name]
         self.matches_collection = self.db['matches']
 
