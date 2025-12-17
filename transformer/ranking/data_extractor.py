@@ -1,4 +1,6 @@
 import os
+from pyexpat import features
+
 import pymongo
 import pandas as pd
 import numpy as np
@@ -61,3 +63,67 @@ class MatchDataExtractor:
         """
         플레이어 주요 지표 추출
         """
+
+        # KDA
+        kills = participant['kills']
+        deaths = participant['deaths']
+        assists = participant['assists']
+
+        kda = (kills + assists) / max(deaths, 1)
+
+        # 총 딜량
+        total_damage = participant['totalDamageDealtToChampions']
+        total_gold = participant['goldEarned']
+
+        # 분당 지표
+        dpm = total_damage / game_duration
+        gpm = total_gold / game_duration
+
+        # 참여율 및 효율성 지표
+        kill_participation = participant['challenges'].get('killParticipation', 0)
+
+        features = {
+            'match_id': match_id,
+            # 'map_id'
+            'puuid': participant['puuid'],
+            'champion': participant['championName'],
+            'win': participant['win'],
+
+            # 핵심 전투 지표
+            'kda': kda,
+            'kills': kills,
+            'deaths': deaths,
+            'assists': assists,
+
+            # 피해량 지표
+            'damage_per_min': dpm,          # DPM
+            'damage_taken_per_min': participant['totalDamageTaken'] / game_duration,            # 받은 데미지 (탱킹)
+            'damage_mitigated_per_min': participant['damageSelfMitigated'] / game_duration,         # 감소시킨 데미지 (방마저)
+            'total_damage_share': participant['challenges'].get('teamDamagePercentage', 0),         # 데미지 비중
+
+            # 골드 및 CS
+            'gold_per_min': gpm,
+            'cs_per_min': participant['totalMinionsKilled'] / game_duration,        # CS
+
+            # 유틸리티 지표
+            'cc_time': participant.get('timeCCingOthers', 0),       # CC
+        'heal_shield_given': participant['totalHealsOnTeammates'] + participant['totalDamageShieldedOnTeammates'],          # 회복, 보호막
+
+            # ARAM 특화 지표
+            'kill_participation': kill_participation,           # 킬 관여율
+            'longest_time_alive': participant['longestTimeSpentLiving'],            # 최장 생존 시간
+
+            # 아이템 효율성
+            'items_purchased': participant['itemsPurchased'],           # 아이템 산 개수 -> 얼마나 잘 컸는지
+            'gold_efficiency': (dpm + participant['totalDamageTaken'] / game_duration) / gpm if gpm > 0 else 0,         # 게임 내내 얼마나 딜 잘했는지
+
+            # 스킬 관련
+            'skill_shots_hit': participant['challenges'].get('skillshotsHit', 0),           # 스킬샷 맞춘 비율
+            'skill_shots_dodged': participant['challenges'].get('skillshotsDodged', 0),         # 스킬샷 못 맞춘 비율
+
+            # 게임 메타 정보
+            'game_duration': game_duration,
+            'timestamp': datetime.now()
+        }
+
+        return features
