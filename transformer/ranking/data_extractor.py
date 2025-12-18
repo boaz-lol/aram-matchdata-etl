@@ -49,7 +49,7 @@ class MatchDataExtractor:
 
             # 각 플레이어별 데이터 추출
             for participant in match['info']['participants']:
-                player_features = self._extract_player_features(
+                player_features = self.extract_player_features(
                     participant,
                     game_duration_min,
                     match_id
@@ -59,7 +59,7 @@ class MatchDataExtractor:
         return pd.DataFrame(all_player_data)
 
 
-    def _extract_player_features(self, participant: Dict, game_duration: float, match_id: str) -> Dict:
+    def extract_player_features(self, participant: Dict, game_duration: float, match_id: str) -> Dict:
         """
         플레이어 주요 지표 추출
         """
@@ -107,7 +107,7 @@ class MatchDataExtractor:
 
             # 유틸리티 지표
             'cc_time': participant.get('timeCCingOthers', 0),       # CC
-        'heal_shield_given': participant['totalHealsOnTeammates'] + participant['totalDamageShieldedOnTeammates'],          # 회복, 보호막
+            'heal_shield_given': participant['totalHealsOnTeammates'] + participant['totalDamageShieldedOnTeammates'],          # 회복, 보호막
 
             # ARAM 특화 지표
             'kill_participation': kill_participation,           # 킬 관여율
@@ -127,3 +127,33 @@ class MatchDataExtractor:
         }
 
         return features
+
+
+    def calculate_performance_labels(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        라벨링(y)
+        """
+        def score_player(row):
+            score = (
+                row['kda'] * 0.25 +                         # kda (25%)
+                row['damage_per_min'] / 1000 * 0.20 +       # dpm (20%), normal 1000
+                row['kill_participation'] * 0.15 +          # 킬 관여율 (15%)
+                row['gold_per_min'] / 500 * 0.10 +          # 골드 획득량 (10%), normal 500
+                (1 - row['death_share']) * 0.15 +           # 팀 내 데스 비중. 생존률 (15%)
+                row['gold_efficiency'] * 0.15               # 골드 효율 (15%)
+            )
+
+            # 승리 시 추가 점수
+            if row['win']:
+                score *= 1.1
+
+            return score
+
+        df['performance_score'] = df.apply(score_player, axis=1)
+
+        df['rank_in_match'] = df.groupby('match_id')['performance_score'].rank(
+            method='min',
+            ascending=False
+        )
+
+        return df
