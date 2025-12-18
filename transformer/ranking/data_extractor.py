@@ -1,5 +1,4 @@
 import os
-from pyexpat import features
 
 import pymongo
 import pandas as pd
@@ -21,6 +20,15 @@ class MatchDataExtractor:
         self.db = self.client[db_name]
         self.matches_collection = self.db['matches']
 
+        # 연결 테스트
+        try:
+            self.client.server_info()
+            print(f"MongoDB 연결 성공: {db_name}")
+        except Exception as e:
+            print(f"MongoDB 연결 실패: {e}")
+            raise
+
+
     def extract_match_features(self, limit: int = None) -> pd.DataFrame:
         """
         MongoDB에서 데이터 불러와서 feature 생성
@@ -34,7 +42,8 @@ class MatchDataExtractor:
             'metadata.matchId': 1,
             'info.gameDuration': 1,
             'info.gameVersion': 1,
-            'info.participants': 1
+            'info.participants': 1,
+            'info.teams': 1
         }
 
         cursor = self.matches_collection.find(query, projection)
@@ -46,6 +55,14 @@ class MatchDataExtractor:
         for match in cursor:
             match_id = match['metadata']['matchId']
             game_duration_min = match['info']['gameDuration'] / 60
+
+            # 팀별 사망 데이터
+            team_deaths = {}
+            for participant in match['info']['participants']:
+                team_id = participant['teamId']
+                if team_id not in team_deaths:
+                    team_deaths[team_id] = 0
+                team_deaths[team_id] += participant['deaths']
 
             # 각 플레이어별 데이터 추출
             for participant in match['info']['participants']:
@@ -59,7 +76,7 @@ class MatchDataExtractor:
         return pd.DataFrame(all_player_data)
 
 
-    def extract_player_features(self, participant: Dict, game_duration: float, match_id: str) -> Dict:
+    def extract_player_features(self, participant: Dict, game_duration: float, match_id: str, team_deaths: Dict = None) -> Dict:
         """
         플레이어 주요 지표 추출
         """
@@ -81,6 +98,12 @@ class MatchDataExtractor:
 
         # 참여율 및 효율성 지표
         kill_participation = participant['challenges'].get('killParticipation', 0)
+
+        # death_share 계산
+        team_id = participant.get('teamId', 100)
+        death_share = 0
+        if team_deaths and team_id in team_deaths:
+            death_share = deaths / max(team_deaths[team_id], 1)
 
         features = {
             'match_id': match_id,
