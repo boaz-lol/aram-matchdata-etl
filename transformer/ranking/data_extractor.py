@@ -1,4 +1,5 @@
 import os
+import json
 
 import pymongo
 import pandas as pd
@@ -10,23 +11,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class MatchDataExtractor:
-    def __init__(self, mongo_uri: str = None, db_name: str = 'aram-db'):
-        self.mongo_uri = mongo_uri or os.getenv('MONGO_URI')
+    def __init__(self, mongo_uri: str = None, db_name: str = 'aram-db', use_mongodb: bool = True):
+        self.use_mongodb = use_mongodb
 
-        if not self.mongo_uri:
-            raise ValueError("MONGO_URI must be provided either as parameter or in .env file")
+        if use_mongodb:
+            self.mongo_uri = mongo_uri or os.getenv('MONGO_URI')
 
-        self.client = pymongo.MongoClient(self.mongo_uri)
-        self.db = self.client[db_name]
-        self.matches_collection = self.db['matches']
+            if not self.mongo_uri:
+                raise ValueError("MONGO_URI must be provided either as parameter or in .env file")
 
-        # 연결 테스트
-        try:
-            self.client.server_info()
-            print(f"MongoDB 연결 성공: {db_name}")
-        except Exception as e:
-            print(f"MongoDB 연결 실패: {e}")
-            raise
+            self.client = pymongo.MongoClient(self.mongo_uri)
+            self.db = self.client[db_name]
+            self.matches_collection = self.db['match']
+
+            # 연결 테스트
+            try:
+                self.client.server_info()
+                print(f"MongoDB 연결 성공: {db_name}")
+            except Exception as e:
+                print(f"MongoDB 연결 실패: {e}")
+                raise
 
 
     def extract_match_features(self, limit: int = None) -> pd.DataFrame:
@@ -69,9 +73,42 @@ class MatchDataExtractor:
                 player_features = self.extract_player_features(
                     participant,
                     game_duration_min,
-                    match_id
+                    match_id,
+                    team_deaths
                 )
                 all_player_data.append(player_features)
+
+        return pd.DataFrame(all_player_data)
+
+
+    def extract_match_features_from_json(self, json_file_path: str) -> pd.DataFrame:
+        """
+        JSON 파일에서 데이터 불러와서 feature 생성
+        """
+        with open(json_file_path, 'r', encoding='utf-8') as f:
+            match = json.load(f)
+
+        match_id = match['metadata']['matchId']
+        game_duration_min = match['info']['gameDuration'] / 60
+
+        # 팀별 사망 데이터
+        team_deaths = {}
+        for participant in match['info']['participants']:
+            team_id = participant['teamId']
+            if team_id not in team_deaths:
+                team_deaths[team_id] = 0
+            team_deaths[team_id] += participant['deaths']
+
+        # 각 플레이어별 데이터 추출
+        all_player_data = []
+        for participant in match['info']['participants']:
+            player_features = self.extract_player_features(
+                participant,
+                game_duration_min,
+                match_id,
+                team_deaths
+            )
+            all_player_data.append(player_features)
 
         return pd.DataFrame(all_player_data)
 
@@ -134,6 +171,7 @@ class MatchDataExtractor:
 
             # ARAM 특화 지표
             'kill_participation': kill_participation,           # 킬 관여율
+            'death_share': death_share,                         # 팀 내 데스 비중
             'longest_time_alive': participant['longestTimeSpentLiving'],            # 최장 생존 시간
 
             # 아이템 효율성
