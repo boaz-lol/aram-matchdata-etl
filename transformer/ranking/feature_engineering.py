@@ -18,9 +18,33 @@ class FeatureEngineer:
         """
 
         # 챔피언 원핫인코딩
-        # 학습용 feature 선택
-        # 정규화
+        df = self.encode_champions(df)
+
         # 파생 feature 생성
+        df = self.create_derived_features(df)
+
+        # 학습에 쓸 feature 선택
+        feature_cols = [
+            'kda', 'kills', 'deaths', 'assists',
+            'damage_per_min', 'damage_taken_per_min',
+            'damage_mitigated_per_min', 'total_damage_share',
+            'gold_per_min', 'cs_per_min', 'gold_efficiency',
+            'cc_time', 'heal_shield_given',
+            'kill_participation', 'death_share',
+            'longest_time_alive',
+
+            # 파생 특징
+            'aggression_index', 'survival_index',
+            'team_contribution', 'combat_efficiency'
+        ]
+
+        self.feature_columns = feature_cols
+
+        x = df[feature_cols].values
+        y = df['performance_score'].values
+
+        return x, y
+
 
     def create_derived_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -44,7 +68,7 @@ class FeatureEngineer:
 
         # 교전력
         df['combat_efficiency'] = (
-            df['dpm'] / max(df['damage_taken_per_min'], 1)
+            df['damage_per_min'] / max(df['damage_taken_per_min'], 1)
         )
 
         # 이상치 제거
