@@ -11,17 +11,18 @@ class FeatureEngineer:
         self.scaler = RobustScaler()
         self.champion_encoder = {}
         self.feature_columns = None
+        self.clip_values = {}
 
-    def prepare_features(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+    def prepare_features(self, df: pd.DataFrame, is_train: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         """
         ML 모델링을 위한 feature 준비
         """
 
         # 챔피언 원핫인코딩
-        df = self.encode_champions(df)
+        df = self.encode_champions(df, is_train=is_train)
 
         # 파생 feature 생성
-        df = self.create_derived_features(df)
+        df = self.create_derived_features(df, is_train=is_train)
 
         # 학습에 쓸 feature 선택
         feature_cols = [
@@ -57,7 +58,7 @@ class FeatureEngineer:
         return x, y
 
 
-    def create_derived_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def create_derived_features(self, df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
         """
         파생 feature 생성
         """
@@ -84,22 +85,31 @@ class FeatureEngineer:
 
         # 이상치 제거
         for col in ['kda', 'damage_per_min', 'gold_per_min']:
-            q1 = df[col].quantile(0.01)
-            q99 = df[col].quantile(0.99)
+            if is_train:
+                q1 = df[col].quantile(0.01)
+                q99 = df[col].quantile(0.99)
+                self.clip_values[col] = (q1, q99)
+            else:
+                q1, q99 = self.clip_values[col]
+
             df[col] = df[col].clip(q1, q99)
 
         return df
 
-    def encode_champions(self, df: pd.DataFrame) -> pd.DataFrame:
+    def encode_champions(self, df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
         """
         챔피언을 숫자로 인코딩
         """
-        unique_champions = df['champion'].unique()
-        self.champion_encoder = {
-            champ: idx for idx, champ in enumerate(unique_champions)
-        }
+        if is_train:
+            unique_champions = df['champion'].unique()
+            self.champion_encoder = {
+                champ: idx for idx, champ in enumerate(unique_champions)
+            }
 
         df['champion_id'] = df['champion'].map(self.champion_encoder)
+
+        # 인식되지 않은 챔피언은 -1로 처리
+        df['champion_id'].fillna(-1, inplace=True)
 
         return df
 
