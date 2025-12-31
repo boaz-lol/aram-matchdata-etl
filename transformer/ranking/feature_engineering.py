@@ -25,13 +25,24 @@ class FeatureEngineer:
 
         # 학습에 쓸 feature 선택
         feature_cols = [
-            'kda', 'kills', 'deaths', 'assists',
+            'champion_id', 'kda', 'kills', 'deaths', 'assists',
+
+            # 피해량
             'damage_per_min', 'damage_taken_per_min',
             'damage_mitigated_per_min', 'total_damage_share',
+
+            # 골드 및 효율성
             'gold_per_min', 'cs_per_min', 'gold_efficiency',
+
+            # 유틸리티
             'cc_time', 'heal_shield_given',
+
+            # 참여도
             'kill_participation', 'death_share',
             'longest_time_alive',
+
+            # 스킬
+            'skill_shots_hit', 'skill_shots_dodged',
 
             # 파생 특징
             'aggression_index', 'survival_index',
@@ -68,7 +79,7 @@ class FeatureEngineer:
 
         # 교전력
         df['combat_efficiency'] = (
-            df['damage_per_min'] / max(df['damage_taken_per_min'], 1)
+            df['damage_per_min'] / df['damage_taken_per_min'].replace(0, 1)
         )
 
         # 이상치 제거
@@ -91,6 +102,20 @@ class FeatureEngineer:
         df['champion_id'] = df['champion'].map(self.champion_encoder)
 
         return df
+
+    def train_test_split_by_match(self, df, test_size: float = 0.2) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        매치 단위로 train/test 분할. leakage 방지용
+        """
+        unique_matches = df['match_id'].unique()
+        train_matches, test_matches = train_test_split(
+            unique_matches, test_size=test_size, random_state=42
+        )
+
+        train_df = df[df['match_id'].isin(train_matches)].copy()
+        test_df = df[df['match_id'].isin(test_matches)].copy()
+
+        return train_df, test_df
 
     def fit_transform(self, X: np.ndarray) -> np.ndarray:
         """
