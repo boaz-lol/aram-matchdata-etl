@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.model_selection import train_test_split
 import joblib
 
-class FeatureEngineer:
+class FeatureFactory:
     def __init__(self):
         self.scaler = RobustScaler()
         self.champion_encoder = {}
@@ -52,10 +52,10 @@ class FeatureEngineer:
 
         self.feature_columns = feature_cols
 
-        x = df[feature_cols].values
+        X = df[feature_cols].values
         y = df['performance_score'].values
 
-        return x, y
+        return X, y
 
 
     def create_derived_features(self, df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
