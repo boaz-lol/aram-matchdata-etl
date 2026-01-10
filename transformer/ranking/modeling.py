@@ -2,6 +2,9 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
 import xgboost as xgb
 import lightgbm as lgb
+from sklearn.model_selection import cross_val_score
+from typing import Dict
+
 
 class EnsembleRanker:
     def __init__(self):
@@ -58,3 +61,49 @@ class EnsembleRanker:
                 random_state=42
             )
         }
+
+    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray = None, y_val: np.ndarray = None):
+        """
+        앙상블 모델 학습
+        """
+
+        # 각 모델별 train/val
+        model_scores = {}
+
+        for name, model in self.models.items():
+            if name in ['xgb', 'lgb'] and X_val is not None:
+                # Early stopping
+                if name == 'xgb':
+                    model.fit(
+                        X_train, y_train,
+                        eval_set=[(X_val, y_val)],
+                        early_stopping_rounds=50,
+                        verbose=False
+                    )
+                else:   # lgb
+                    model.fit(
+                        X_train, y_train,
+                        eval_set=[(X_val, y_val)],
+                        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)]
+                    )
+
+
+            else:
+                model.fit(X_train, y_train)
+
+            # CV 점수 계산
+            cv_scores = cross_val_score(
+                model, X_train, y_train,
+                cv=5, scoring='neg_mean_squared_error',
+                n_jobs=-1
+            )
+
+            model_scores[name] = -np.mean(cv_scores)
+            print(f"{name} MSE: {model_scores[name]:.4f}")
+
+
+        # 가중치 계산
+
+
+
+
