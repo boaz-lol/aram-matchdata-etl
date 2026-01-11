@@ -105,21 +105,20 @@ class EnsembleRanker:
 
         # 전체 데이터로 최종 학습
         for name, model in self.models.items():
-            if name in ['xgb', 'lgb'] and X_val is not None:
-                # Early stopping
-                if name == 'xgb':
-                    model.fit(
-                        X_train, y_train,
-                        eval_set=[(X_val, y_val)],
-                        early_stopping_rounds=50,
-                        verbose=False
-                    )
-                else:   # lgb
-                    model.fit(
-                        X_train, y_train,
-                        eval_set=[(X_val, y_val)],
-                        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)]
-                    )
+            if name == 'xgb' and X_val is not None:
+                # XGBoost
+                model.fit(
+                    X_train, y_train,
+                    eval_set=[(X_val, y_val)],
+                    verbose=False
+                )
+            elif name == 'lgb' and X_val is not None:
+                # LightGBM
+                model.fit(
+                    X_train, y_train,
+                    eval_set=[(X_val, y_val)],
+                    callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)]
+                )
             else:
                 model.fit(X_train, y_train)
 
