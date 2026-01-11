@@ -140,3 +140,24 @@ class EnsembleRanker:
 
         return final_scores
 
+    def predict_rankings(self, X: np.ndarray, match_ids: np.ndarray = None) -> Dict:
+        """
+        점수 -> 순위
+        """
+        scores = self.predict(X)
+
+        if match_ids is None:
+            rankings = (-scores).argsort().argsort() + 1    # 높은 점수 = 높은 순위 = 낮은 숫자
+            return {'rankings': rankings, 'scores': scores}
+
+        # 매치별 순위 계산
+        unique_matches = np.unique(match_ids)
+        rankings = np.zeros_like(scores)
+
+        for match_id in unique_matches:
+            mask = match_ids == match_id    # match 참여 인원만 뽑아내기
+            match_scores = scores[mask]
+            match_rankings = (-match_scores).argsort().argsort() + 1
+            rankings[mask] = match_rankings
+
+        return {'rankings': rankings, 'scores': scores}
