@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
 import xgboost as xgb
 import lightgbm as lgb
@@ -167,3 +168,19 @@ class EnsembleRanker:
         점수 -> 순위 (높은 점수 = 높은 순위 = 낮은 숫자)
         """
         return (-scores).argsort().argsort() + 1
+
+    def get_feature_importance(self) -> pd.DataFrame:
+        """
+        특징 중요도 추출
+        """
+        importance_dict = {}
+
+        for name, model in self.models.items():
+            if hasattr(model, 'feature_importances_'):
+                importance_dict[name] = model.feature_importances_
+
+        importance_df = pd.DataFrame(importance_dict)
+        importance_df['mean'] = importance_df.mean(axis=1)
+        importance_df['std'] = importance_df.std(axis=1)
+
+        return importance_df.sort_values('mean', ascending=False)
