@@ -1,3 +1,4 @@
+import os
 from typing import Tuple
 
 import pandas as pd
@@ -8,16 +9,26 @@ import joblib
 
 class FeatureFactory:
     def __init__(self):
+        """
+        특징 생성 및 전처리를 담당하는 클래스
+        """
         self.scaler = RobustScaler()
         self.champion_encoder = {}
         self.feature_columns = None
         self.clip_values = {}
 
+
     def prepare_features(self, df: pd.DataFrame, is_train: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         """
         ML 모델링을 위한 feature 준비
-        """
 
+        Args:
+            df: 원본 DataFrame
+            is_train: 학습 데이터 여부 (True: 학습, False: 테스트)
+
+        Returns:
+            (X, y) 튜플 - 특징 배열과 타겟 배열
+        """
         # 챔피언 원핫인코딩
         df = self.encode_champions(df, is_train=is_train)
 
@@ -61,8 +72,14 @@ class FeatureFactory:
     def create_derived_features(self, df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
         """
         파생 feature 생성
-        """
 
+        Args:
+            df: 원본 DataFrame
+            is_train: 학습 데이터 여부
+
+        Returns:
+            파생 특징이 추가된 DataFrame
+        """
         # 공격성
         df['aggression_index'] = (
             df['kills'] + df['assists'] * 0.5
@@ -96,9 +113,17 @@ class FeatureFactory:
 
         return df
 
+
     def encode_champions(self, df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
         """
         챔피언을 숫자로 인코딩
+
+        Args:
+            df: 원본 DataFrame
+            is_train: 학습 데이터 여부
+
+        Returns:
+            챔피언 인코딩이 추가된 DataFrame
         """
         if is_train:
             unique_champions = df['champion'].unique()
@@ -113,9 +138,17 @@ class FeatureFactory:
 
         return df
 
-    def train_test_split_by_match(self, df, test_size: float = 0.2) -> Tuple[pd.DataFrame, pd.DataFrame]:
+
+    def train_test_split_by_match(self, df: pd.DataFrame, test_size: float = 0.2) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        매치 단위로 train/test 분할. leakage 방지용
+        매치 단위로 train/test 분할 (데이터 유출 방지)
+
+        Args:
+            df: 전체 DataFrame
+            test_size: 테스트 데이터 비율
+
+        Returns:
+            (train_df, test_df) 튜플
         """
         unique_matches = df['match_id'].unique()
         train_matches, test_matches = train_test_split(
@@ -127,19 +160,54 @@ class FeatureFactory:
 
         return train_df, test_df
 
+
     def fit_transform(self, X: np.ndarray) -> np.ndarray:
         """
-        학습 데이터 정규화
+        학습 데이터 정규화 (fit & transform)
+
+        Args:
+            X: 학습 데이터 특징 배열
+
+        Returns:
+            정규화된 특징 배열
         """
         return self.scaler.fit_transform(X)
 
+
     def transform(self, X: np.ndarray) -> np.ndarray:
         """
-        테스트 데이터 정규화
+        테스트 데이터 정규화 (transform only)
+
+        Args:
+            X: 테스트 데이터 특징 배열
+
+        Returns:
+            정규화된 특징 배열
         """
         return self.scaler.transform(X)
 
+
     def save_preprocessors(self, path: str = './models/'):
+        """
+        전처리 객체 저장
+
+        Args:
+            path: 저장할 디렉토리 경로
+        """
+        os.makedirs(path, exist_ok=True)
+
         joblib.dump(self.scaler, f'{path}scaler.pkl')
         joblib.dump(self.champion_encoder, f'{path}champion_encoder.pkl')
         joblib.dump(self.feature_columns, f'{path}feature_columns.pkl')
+
+
+    def load_preprocessors(self, path: str = './models/'):
+        """
+        전처리 객체 로드
+
+        Args:
+            path: 저장된 디렉토리 경로
+        """
+        self.scaler = joblib.load(f'{path}scaler.pkl')
+        self.champion_encoder = joblib.load(f'{path}champion_encoder.pkl')
+        self.feature_columns = joblib.load(f'{path}feature_columns.pkl')

@@ -8,9 +8,11 @@ from typing import Dict, List, Optional
 import joblib
 import os
 
-
 class EnsembleRanker:
     def __init__(self):
+        """
+        앙상블 랭킹 모델 (XGBoost, LightGBM, RandomForest, ExtraTrees, GBM)
+        """
         self.models = {
             'xgb': xgb.XGBRegressor(
                 n_estimators=200,
@@ -69,11 +71,22 @@ class EnsembleRanker:
         self.weights = None
         self.is_trained = False
 
-    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: Optional[np.ndarray] = None, y_val: Optional[np.ndarray] = None):
+
+    def train(self,
+              X_train: np.ndarray,
+              y_train: np.ndarray,
+              X_val: Optional[np.ndarray] = None,
+              y_val: Optional[np.ndarray] = None
+              ):
         """
         앙상블 모델 학습
-        """
 
+        Args:
+            X_train: 학습 데이터 특징
+            y_train: 학습 데이터 타겟
+            X_val: 검증 데이터 특징 (early stopping용)
+            y_val: 검증 데이터 타겟 (early stopping용)
+        """
         # 각 모델별 train/val
         model_scores = {}
 
@@ -114,11 +127,14 @@ class EnsembleRanker:
 
         self.is_trained = True
 
+
     def calculate_weight(self, scores: Dict[str, float]):
         """
         모델 성능 기반 가중치 계산
-        """
 
+        Args:
+            scores: 모델별 MSE 점수 딕셔너리
+        """
         # 역수로 MSE 점수 직관화
         inverse_scores = {k: 1/v for k, v in scores.items()}
 
@@ -126,9 +142,16 @@ class EnsembleRanker:
         total = sum(inverse_scores.values())
         self.weights = {k: v/total for k, v in inverse_scores.items()}
 
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         앙상블 예측
+
+        Args:
+            X: 예측할 데이터 특징
+
+        Returns:
+            예측된 성능 점수 배열
         """
         if not self.is_trained:
             raise ValueError("모델이 아직 학습되지 않았습니다!")
@@ -146,9 +169,17 @@ class EnsembleRanker:
 
         return final_scores
 
+
     def predict_rankings(self, X: np.ndarray, match_ids: Optional[np.ndarray] = None) -> Dict[str, np.ndarray]:
         """
         점수 -> 순위 (매치별)
+
+        Args:
+            X: 예측할 데이터 특징
+            match_ids: 매치 ID 배열 (None이면 전체를 하나의 그룹으로 순위 계산)
+
+        Returns:
+            {'rankings': 순위 배열, 'scores': 점수 배열}
         """
         scores = self.predict(X)
 
@@ -168,15 +199,29 @@ class EnsembleRanker:
 
         return {'rankings': rankings, 'scores': scores}
 
+
     def scores_to_ranks(self, scores: np.ndarray) -> np.ndarray:
         """
         점수 -> 순위 (높은 점수 = 높은 순위 = 낮은 숫자)
+
+        Args:
+            scores: 점수 배열
+
+        Returns:
+            순위 배열 (1이 가장 높은 순위)
         """
         return (-scores).argsort().argsort() + 1
+
 
     def get_feature_importance(self, feature_names: Optional[List[str]] = None) -> pd.DataFrame:
         """
         특징 중요도 추출
+
+        Args:
+            feature_names: 특징 이름 리스트 (None이면 숫자 인덱스 사용)
+
+        Returns:
+            특징별 중요도를 담은 DataFrame (mean, std 컬럼 포함)
         """
         if not self.is_trained:
             raise ValueError("모델이 아직 학습되지 않았습니다!")
@@ -198,9 +243,13 @@ class EnsembleRanker:
 
         return importance_df.sort_values('mean', ascending=False)
 
+
     def save_models(self, path: str = './models/'):
         """
         모델 저장
+
+        Args:
+            path: 모델을 저장할 디렉토리 경로
         """
         if not self.is_trained:
             raise ValueError("모델이 아직 학습되지 않았습니다!")
@@ -213,9 +262,13 @@ class EnsembleRanker:
         joblib.dump(self.weights, f'{path}ensemble_weights.pkl')
         print(f"모델이 {path}에 저장되었습니다.")
 
+
     def load_models(self, path: str = './models/'):
         """
         모델 로드
+
+        Args:
+            path: 모델이 저장된 디렉토리 경로
         """
         for name in self.models.keys():
             self.models[name] = joblib.load(f'{path}ensemble_{name}.pkl')

@@ -12,6 +12,14 @@ load_dotenv()
 
 class MatchDataExtractor:
     def __init__(self, mongo_uri: str = None, db_name: str = 'aram-db', use_mongodb: bool = True):
+        """
+        MongoDB에서 매치 데이터를 추출하는 클래스
+
+        Args:
+            mongo_uri: MongoDB 연결 URI (None이면 환경 변수 사용)
+            db_name: 데이터베이스 이름
+            use_mongodb: MongoDB 사용 여부
+        """
         self.use_mongodb = use_mongodb
 
         if use_mongodb:
@@ -36,6 +44,12 @@ class MatchDataExtractor:
     def extract_match_features(self, limit: int = None) -> pd.DataFrame:
         """
         MongoDB에서 데이터 불러와서 feature 생성
+
+        Args:
+            limit: 가져올 매치 개수 제한 (None이면 전체)
+
+        Returns:
+            플레이어별 특징을 담은 DataFrame
         """
         query = {
             'info.gameMode': 'ARAM',
@@ -84,6 +98,12 @@ class MatchDataExtractor:
     def extract_match_features_from_json(self, json_file_path: str) -> pd.DataFrame:
         """
         JSON 파일에서 데이터 불러와서 feature 생성
+
+        Args:
+            json_file_path: JSON 파일 경로
+
+        Returns:
+            플레이어별 특징을 담은 DataFrame
         """
         with open(json_file_path, 'r', encoding='utf-8') as f:
             match = json.load(f)
@@ -116,8 +136,16 @@ class MatchDataExtractor:
     def extract_player_features(self, participant: Dict, game_duration: float, match_id: str, team_deaths: Dict = None) -> Dict:
         """
         플레이어 주요 지표 추출
-        """
 
+        Args:
+            participant: 플레이어 데이터 딕셔너리
+            game_duration: 게임 진행 시간 (분)
+            match_id: 매치 ID
+            team_deaths: 팀별 사망 횟수 딕셔너리
+
+        Returns:
+            플레이어 특징을 담은 딕셔너리
+        """
         # KDA
         kills = participant['kills']
         deaths = participant['deaths']
@@ -192,7 +220,13 @@ class MatchDataExtractor:
 
     def calculate_performance_labels(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        라벨링(y)
+        라벨링(y) - 성능 점수 및 순위 계산
+
+        Args:
+            df: 플레이어 특징 DataFrame
+
+        Returns:
+            성능 점수(performance_score)와 순위(rank_in_match)가 추가된 DataFrame
         """
         def score_player(row):
             score = (
