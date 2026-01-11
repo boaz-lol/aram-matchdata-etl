@@ -75,6 +75,20 @@ class EnsembleRanker:
         # 각 모델별 train/val
         model_scores = {}
 
+        # 모델 성능 평가(CV)
+        for name, model in self.models.items():
+            cv_scores = cross_val_score(
+                model, X_train, y_train,
+                cv=5, scoring='neg_mean_squared_error',
+                n_jobs=-1
+            )
+            model_scores[name] = -np.mean(cv_scores)
+            print(f"{name} CV MSE: {model_scores[name]:.4f}")
+
+        # 가중치 계산
+        self.calculate_weight(model_scores)
+
+        # 전체 데이터로 최종 학습
         for name, model in self.models.items():
             if name in ['xgb', 'lgb'] and X_val is not None:
                 # Early stopping
@@ -91,22 +105,11 @@ class EnsembleRanker:
                         eval_set=[(X_val, y_val)],
                         callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)]
                     )
-
             else:
                 model.fit(X_train, y_train)
 
-            # CV 점수 계산
-            cv_scores = cross_val_score(
-                model, X_train, y_train,
-                cv=5, scoring='neg_mean_squared_error',
-                n_jobs=-1
-            )
+            print(f"{name} 학습 완료")
 
-            model_scores[name] = -np.mean(cv_scores)
-            print(f"{name} MSE: {model_scores[name]:.4f}")
-
-        # 가중치 계산
-        self.calculate_weight(model_scores)
         self.is_trained = True
 
     def calculate_weight(self, scores: Dict[str, float]):
@@ -118,7 +121,7 @@ class EnsembleRanker:
         inverse_scores = {k: 1/v for k, v in scores.items()}
 
         # 정규화
-        total = sum(inverse_scores)
+        total = sum(inverse_scores.values())
         self.weights = {k: v/total for k, v in inverse_scores.items()}
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -184,3 +187,4 @@ class EnsembleRanker:
         importance_df['std'] = importance_df.std(axis=1)
 
         return importance_df.sort_values('mean', ascending=False)
+    
