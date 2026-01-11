@@ -4,7 +4,9 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, E
 import xgboost as xgb
 import lightgbm as lgb
 from sklearn.model_selection import cross_val_score
-from typing import Dict
+from typing import Dict, List, Optional
+import joblib
+import os
 
 
 class EnsembleRanker:
@@ -67,7 +69,7 @@ class EnsembleRanker:
         self.weights = None
         self.is_trained = False
 
-    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray = None, y_val: np.ndarray = None):
+    def train(self, X_train: np.ndarray, y_train: np.ndarray, X_val: Optional[np.ndarray] = None, y_val: Optional[np.ndarray] = None):
         """
         앙상블 모델 학습
         """
@@ -144,7 +146,7 @@ class EnsembleRanker:
 
         return final_scores
 
-    def predict_rankings(self, X: np.ndarray, match_ids: np.ndarray = None) -> Dict:
+    def predict_rankings(self, X: np.ndarray, match_ids: Optional[np.ndarray] = None) -> Dict[str, np.ndarray]:
         """
         점수 -> 순위 (매치별)
         """
@@ -166,16 +168,19 @@ class EnsembleRanker:
 
         return {'rankings': rankings, 'scores': scores}
 
-    def scores_to_ranks(self, scores):
+    def scores_to_ranks(self, scores: np.ndarray) -> np.ndarray:
         """
         점수 -> 순위 (높은 점수 = 높은 순위 = 낮은 숫자)
         """
         return (-scores).argsort().argsort() + 1
 
-    def get_feature_importance(self) -> pd.DataFrame:
+    def get_feature_importance(self, feature_names: Optional[List[str]] = None) -> pd.DataFrame:
         """
         특징 중요도 추출
         """
+        if not self.is_trained:
+            raise ValueError("모델이 아직 학습되지 않았습니다!")
+
         importance_dict = {}
 
         for name, model in self.models.items():
@@ -183,8 +188,38 @@ class EnsembleRanker:
                 importance_dict[name] = model.feature_importances_
 
         importance_df = pd.DataFrame(importance_dict)
+
+        # feature_names None이면 숫자 인덱스 사용
+        if feature_names is not None:
+            importance_df.index = feature_names
+
         importance_df['mean'] = importance_df.mean(axis=1)
         importance_df['std'] = importance_df.std(axis=1)
 
         return importance_df.sort_values('mean', ascending=False)
-    
+
+    def save_models(self, path: str = './models/'):
+        """
+        모델 저장
+        """
+        if not self.is_trained:
+            raise ValueError("모델이 아직 학습되지 않았습니다!")
+
+        os.makedirs(path, exist_ok=True)
+
+        for name, model in self.models.items():
+            joblib.dump(model, f'{path}ensemble_{name}.pkl')
+
+        joblib.dump(self.weights, f'{path}ensemble_weights.pkl')
+        print(f"모델이 {path}에 저장되었습니다.")
+
+    def load_models(self, path: str = './models/'):
+        """
+        모델 로드
+        """
+        for name in self.models.keys():
+            self.models[name] = joblib.load(f'{path}ensemble_{name}.pkl')
+
+        self.weights = joblib.load(f'{path}ensemble_weights.pkl')
+        self.is_trained = True
+        print("모델을 성공적으로 로드했습니다.")
