@@ -162,7 +162,8 @@ class MatchDataExtractor:
         gpm = total_gold / game_duration
 
         # 참여율 및 효율성 지표
-        kill_participation = participant['challenges'].get('killParticipation', 0)
+        challenges = participant.get('challenges', {})
+        kill_participation = challenges.get('killParticipation', 0)
 
         # death_share 계산
         team_id = participant.get('teamId', 100)
@@ -187,7 +188,7 @@ class MatchDataExtractor:
             'damage_per_min': dpm,          # DPM
             'damage_taken_per_min': participant['totalDamageTaken'] / game_duration,            # 받은 데미지 (탱킹)
             'damage_mitigated_per_min': participant['damageSelfMitigated'] / game_duration,         # 감소시킨 데미지 (방마저)
-            'total_damage_share': participant['challenges'].get('teamDamagePercentage', 0),         # 데미지 비중
+            'total_damage_share': challenges.get('teamDamagePercentage', 0),         # 데미지 비중
 
             # 골드 및 CS
             'gold_per_min': gpm,
@@ -207,8 +208,8 @@ class MatchDataExtractor:
             'gold_efficiency': (dpm + participant['totalDamageTaken'] / game_duration) / gpm if gpm > 0 else 0,         # 게임 내내 얼마나 딜 잘했는지
 
             # 스킬 관련
-            'skill_shots_hit': participant['challenges'].get('skillshotsHit', 0),           # 스킬샷 맞춘 비율
-            'skill_shots_dodged': participant['challenges'].get('skillshotsDodged', 0),         # 스킬샷 못 맞춘 비율
+            'skill_shots_hit': challenges.get('skillshotsHit', 0),           # 스킬샷 맞춘 비율
+            'skill_shots_dodged': challenges.get('skillshotsDodged', 0),         # 스킬샷 못 맞춘 비율
 
             # 게임 메타 정보
             'game_duration': game_duration,
