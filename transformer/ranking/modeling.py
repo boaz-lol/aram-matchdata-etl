@@ -108,7 +108,6 @@ class EnsembleRanker:
         self.calculate_weight(model_scores)
         self.is_trained = True
 
-
     def calculate_weight(self, scores: Dict[str, float]):
         """
         모델 성능 기반 가중치 계산
@@ -121,7 +120,23 @@ class EnsembleRanker:
         total = sum(inverse_scores)
         self.weights = {k: v/total for k, v in inverse_scores.items()}
 
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        앙상블 예측
+        """
+        if not self.is_trained:
+            raise ValueError("모델이 아직 학습되지 않았습니다!")
 
+        predictions = {}
 
+        # 모델별 예측값 수집
+        for name, model in self.models.items():
+            predictions[name] = model.predict(X)
 
+        # 가중 평균으로 최종 점수 계산
+        final_scores = np.zeros(len(X))
+        for name, pred in predictions.items():
+            final_scores += self.weights[name] * pred
+
+        return final_scores
 
