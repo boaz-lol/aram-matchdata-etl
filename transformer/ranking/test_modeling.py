@@ -28,7 +28,7 @@ def test_full_pipeline():
 
     # 2. 라벨링
     print("\n[2단계] 성능 점수 라벨링 중...")
-    df = extractor.calculate_performance_labels(df)
+    df = FeatureFactory.calculate_performance_labels(df)
     print(f"  ✓ 라벨링 완료")
     print(f"  ✓ 성능 점수 범위: {df['performance_score'].min():.2f} ~ {df['performance_score'].max():.2f}")
 
