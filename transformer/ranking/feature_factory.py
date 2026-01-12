@@ -1,0 +1,339 @@
+import os
+from typing import Tuple, Dict
+
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.model_selection import train_test_split
+import joblib
+from datetime import datetime
+
+
+class FeatureFactory:
+    def __init__(self):
+        """
+        특징 생성 및 전처리를 담당하는 클래스
+        """
+        self.scaler = RobustScaler()
+        self.champion_encoder = {}
+        self.feature_columns = None
+        self.clip_values = {}
+
+
+    @staticmethod
+    def extract_player_features(participant: Dict, game_duration: float, match_id: str, team_deaths: Dict = None) -> Dict:
+        """
+        플레이어 주요 지표 추출
+
+        Args:
+            participant: 플레이어 데이터 딕셔너리
+            game_duration: 게임 진행 시간 (분)
+            match_id: 매치 ID
+            team_deaths: 팀별 사망 횟수 딕셔너리
+
+        Returns:
+            플레이어 특징을 담은 딕셔너리
+        """
+        # KDA
+        kills = participant['kills']
+        deaths = participant['deaths']
+        assists = participant['assists']
+
+        kda = (kills + assists) / max(deaths, 1)
+
+        # 총 딜량
+        total_damage = participant['totalDamageDealtToChampions']
+        total_gold = participant['goldEarned']
+
+        # 분당 지표
+        dpm = total_damage / game_duration
+        gpm = total_gold / game_duration
+
+        # 참여율 및 효율성 지표
+        challenges = participant.get('challenges', {})
+        kill_participation = challenges.get('killParticipation', 0)
+
+        # death_share 계산
+        team_id = participant.get('teamId', 100)
+        death_share = 0
+        if team_deaths and team_id in team_deaths:
+            death_share = deaths / max(team_deaths[team_id], 1)
+
+        features = {
+            'match_id': match_id,
+            # 'map_id'
+            'puuid': participant['puuid'],
+            'champion': participant['championName'],
+            'win': participant['win'],
+
+            # 핵심 전투 지표
+            'kda': kda,
+            'kills': kills,
+            'deaths': deaths,
+            'assists': assists,
+
+            # 피해량 지표
+            'damage_per_min': dpm,          # DPM
+            'damage_taken_per_min': participant['totalDamageTaken'] / game_duration,            # 받은 데미지 (탱킹)
+            'damage_mitigated_per_min': participant['damageSelfMitigated'] / game_duration,         # 감소시킨 데미지 (방마저)
+            'total_damage_share': challenges.get('teamDamagePercentage', 0),         # 데미지 비중
+
+            # 골드 및 CS
+            'gold_per_min': gpm,
+            'cs_per_min': participant['totalMinionsKilled'] / game_duration,        # CS
+
+            # 유틸리티 지표
+            'cc_time': participant.get('timeCCingOthers', 0),       # CC
+            'heal_shield_given': participant['totalHealsOnTeammates'] + participant['totalDamageShieldedOnTeammates'],          # 회복, 보호막
+
+            # ARAM 특화 지표
+            'kill_participation': kill_participation,           # 킬 관여율
+            'death_share': death_share,                         # 팀 내 데스 비중
+            'longest_time_alive': participant['longestTimeSpentLiving'],            # 최장 생존 시간
+
+            # 아이템 효율성
+            'items_purchased': participant['itemsPurchased'],           # 아이템 산 개수 -> 얼마나 잘 컸는지
+            'gold_efficiency': (dpm + participant['totalDamageTaken'] / game_duration) / gpm if gpm > 0 else 0,         # 게임 내내 얼마나 딜 잘했는지
+
+            # 스킬 관련
+            'skill_shots_hit': challenges.get('skillshotsHit', 0),           # 스킬샷 맞춘 비율
+            'skill_shots_dodged': challenges.get('skillshotsDodged', 0),         # 스킬샷 못 맞춘 비율
+
+            # 게임 메타 정보
+            'game_duration': game_duration,
+            'timestamp': datetime.now()
+        }
+
+        return features
+
+
+    @staticmethod
+    def calculate_performance_labels(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        라벨링(y) - 성능 점수 및 순위 계산
+
+        Args:
+            df: 플레이어 특징 DataFrame
+
+        Returns:
+            성능 점수(performance_score)와 순위(rank_in_match)가 추가된 DataFrame
+        """
+        def score_player(row):
+            score = (
+                row['kda'] * 0.25 +                         # kda (25%)
+                row['damage_per_min'] / 1000 * 0.20 +       # dpm (20%), normal 1000
+                row['kill_participation'] * 0.15 +          # 킬 관여율 (15%)
+                row['gold_per_min'] / 500 * 0.10 +          # 골드 획득량 (10%), normal 500
+                (1 - row['death_share']) * 0.15 +           # 팀 내 데스 비중. 생존률 (15%)
+                row['gold_efficiency'] * 0.15               # 골드 효율 (15%)
+            )
+
+            # 승리 시 추가 점수
+            if row['win']:
+                score *= 1.1
+
+            return score
+
+        df['performance_score'] = df.apply(score_player, axis=1)
+
+        df['rank_in_match'] = df.groupby('match_id')['performance_score'].rank(
+            method='min',
+            ascending=False
+        )
+
+        return df
+
+
+    def prepare_features(self, df: pd.DataFrame, is_train: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        ML 모델링을 위한 feature 준비
+
+        Args:
+            df: 원본 DataFrame
+            is_train: 학습 데이터 여부 (True: 학습, False: 테스트)
+
+        Returns:
+            (X, y) 튜플 - 특징 배열과 타겟 배열
+        """
+        # 챔피언 원핫인코딩
+        df = self.encode_champions(df, is_train=is_train)
+
+        # 파생 feature 생성
+        df = self.create_derived_features(df, is_train=is_train)
+
+        # 학습에 쓸 feature 선택
+        feature_cols = [
+            'champion_id', 'kda', 'kills', 'deaths', 'assists',
+
+            # 피해량
+            'damage_per_min', 'damage_taken_per_min',
+            'damage_mitigated_per_min', 'total_damage_share',
+
+            # 골드 및 효율성
+            'gold_per_min', 'cs_per_min', 'gold_efficiency',
+
+            # 유틸리티
+            'cc_time', 'heal_shield_given',
+
+            # 참여도
+            'kill_participation', 'death_share',
+            'longest_time_alive',
+
+            # 스킬
+            'skill_shots_hit', 'skill_shots_dodged',
+
+            # 파생 특징
+            'aggression_index', 'survival_index',
+            'team_contribution', 'combat_efficiency'
+        ]
+
+        self.feature_columns = feature_cols
+
+        X = df[feature_cols].values
+        y = df['performance_score'].values
+
+        return X, y
+
+
+    def create_derived_features(self, df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
+        """
+        파생 feature 생성
+
+        Args:
+            df: 원본 DataFrame
+            is_train: 학습 데이터 여부
+
+        Returns:
+            파생 특징이 추가된 DataFrame
+        """
+        # 공격성
+        df['aggression_index'] = (
+            df['kills'] + df['assists'] * 0.5
+        ) / df['game_duration']
+
+        # 생존력
+        df['survival_index'] = df['longest_time_alive'] / (df['game_duration'] * 60)
+
+        # 팀 기여도
+        df['team_contribution'] = (
+            df['kill_participation'] * 0.4 +
+            df['total_damage_share'] * 0.4 +
+            (1 - df['death_share']) * 0.2
+        )
+
+        # 교전력
+        df['combat_efficiency'] = (
+            df['damage_per_min'] / df['damage_taken_per_min'].replace(0, 1)
+        )
+
+        # 이상치 제거
+        for col in ['kda', 'damage_per_min', 'gold_per_min']:
+            if is_train:
+                q1 = df[col].quantile(0.01)
+                q99 = df[col].quantile(0.99)
+                self.clip_values[col] = (q1, q99)
+            else:
+                q1, q99 = self.clip_values[col]
+
+            df[col] = df[col].clip(q1, q99)
+
+        return df
+
+
+    def encode_champions(self, df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
+        """
+        챔피언을 숫자로 인코딩
+
+        Args:
+            df: 원본 DataFrame
+            is_train: 학습 데이터 여부
+
+        Returns:
+            챔피언 인코딩이 추가된 DataFrame
+        """
+        if is_train:
+            unique_champions = df['champion'].unique()
+            self.champion_encoder = {
+                champ: idx for idx, champ in enumerate(unique_champions)
+            }
+
+        df['champion_id'] = df['champion'].map(self.champion_encoder)
+
+        # 인식되지 않은 챔피언은 -1로 처리
+        df['champion_id'].fillna(-1, inplace=True)
+
+        return df
+
+
+    def train_test_split_by_match(self, df: pd.DataFrame, test_size: float = 0.2) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        매치 단위로 train/test 분할 (데이터 유출 방지)
+
+        Args:
+            df: 전체 DataFrame
+            test_size: 테스트 데이터 비율
+
+        Returns:
+            (train_df, test_df) 튜플
+        """
+        unique_matches = df['match_id'].unique()
+        train_matches, test_matches = train_test_split(
+            unique_matches, test_size=test_size, random_state=42
+        )
+
+        train_df = df[df['match_id'].isin(train_matches)].copy()
+        test_df = df[df['match_id'].isin(test_matches)].copy()
+
+        return train_df, test_df
+
+
+    def fit_transform(self, X: np.ndarray) -> np.ndarray:
+        """
+        학습 데이터 정규화 (fit & transform)
+
+        Args:
+            X: 학습 데이터 특징 배열
+
+        Returns:
+            정규화된 특징 배열
+        """
+        return self.scaler.fit_transform(X)
+
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        """
+        테스트 데이터 정규화 (transform only)
+
+        Args:
+            X: 테스트 데이터 특징 배열
+
+        Returns:
+            정규화된 특징 배열
+        """
+        return self.scaler.transform(X)
+
+
+    def save_preprocessors(self, path: str = './models/'):
+        """
+        전처리 객체 저장
+
+        Args:
+            path: 저장할 디렉토리 경로
+        """
+        os.makedirs(path, exist_ok=True)
+
+        joblib.dump(self.scaler, f'{path}scaler.pkl')
+        joblib.dump(self.champion_encoder, f'{path}champion_encoder.pkl')
+        joblib.dump(self.feature_columns, f'{path}feature_columns.pkl')
+
+
+    def load_preprocessors(self, path: str = './models/'):
+        """
+        전처리 객체 로드
+
+        Args:
+            path: 저장된 디렉토리 경로
+        """
+        self.scaler = joblib.load(f'{path}scaler.pkl')
+        self.champion_encoder = joblib.load(f'{path}champion_encoder.pkl')
+        self.feature_columns = joblib.load(f'{path}feature_columns.pkl')

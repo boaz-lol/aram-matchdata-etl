@@ -6,6 +6,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 from transformer.ranking.data_extractor import MatchDataExtractor
+from transformer.ranking.feature_factory import FeatureFactory
 
 
 def test_single_match():
@@ -56,9 +57,7 @@ def test_single_match():
 
 
 def test_labeling(df):
-    extractor = MatchDataExtractor(use_mongodb=False)
-
-    df_labeled = extractor.calculate_performance_labels(df)
+    df_labeled = FeatureFactory.calculate_performance_labels(df)
 
     df_sorted = df_labeled.sort_values('rank_in_match')
 
