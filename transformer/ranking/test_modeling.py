@@ -6,7 +6,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 from transformer.ranking.data_extractor import MatchDataExtractor
-from transformer.ranking.feature_engineering import FeatureFactory
+from transformer.ranking.feature_factory import FeatureFactory
 from transformer.ranking.modeling import EnsembleRanker
 import numpy as np
 
